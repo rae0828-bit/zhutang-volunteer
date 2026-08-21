@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>竹塘志工訪視打卡</title>
+  <!-- 引入 LINE LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: "PingFang TC", "Microsoft JhengHei", -apple-system, sans-serif;
+      background-color: #F0F4F8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 96vh;
+      justify-content: center;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: #FFFFFF;
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+      text-align: center;
+    }
+    .user-pill {
+      font-size: 18px;
+      font-weight: bold;
+      color: #2D3748;
+      background: #EDF2F7;
+      padding: 8px 18px;
+      border-radius: 50px;
+      display: inline-block;
+      margin-bottom: 16px;
+    }
+    .status-text {
+      font-size: 20px;
+      font-weight: 800;
+      color: #2D3748;
+      margin: 16px 0;
+      line-height: 1.4;
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    /* 超大按鈕設計：字體大、按壓回饋明顯 */
+    .big-btn {
+      width: 100%;
+      min-height: 190px;
+      border-radius: 20px;
+      border: none;
+      font-size: 26px;
+      font-weight: 900;
+      color: #FFFFFF;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    .big-btn:active { transform: scale(0.96); }
+    .btn-sub { font-size: 17px; font-weight: normal; margin-top: 10px; opacity: 0.95; }
+    
+    .btn-in { background-color: #06C755; }
+    .btn-out { background-color: #E53E3E; }
+    .btn-wait { background-color: #CBD5E0; color: #4A5568; cursor: not-allowed; }
+    .btn-retry { background-color: #4A5568; }
+
+    .warning-box {
+      background: #FEFCBF;
+      color: #744210;
+      padding: 14px;
+      border-radius: 12px;
+      font-size: 16px;
+      margin-top: 16px;
+      font-weight: bold;
+      line-height: 1.4;
+    }
+    .done-msg {
+      font-size: 32px;
+      font-weight: 900;
+      color: #06C755;
+      padding: 40px 10px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card" id="main-card">
+    <div class="user-pill" id="user-display">志工連線中...</div>
+    <div class="status-text" id="status-text">🔍 正在為您搜尋最近長輩住處...</div>
+    <div id="btn-box">
+      <button class="big-btn btn-wait" disabled>
+        <span>📍 正在取得定位...</span>
+        <span class="btn-sub">請稍候 3~5 秒</span>
+      </button>
+    </div>
+    <div id="warning-box"></div>
+  </div>
+
+  <script>
+    // ===== 請替換以下兩個變數 =====
+    const LIFF_ID = "YOUR_LIFF_ID"; // 階段三取得後貼上
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbwuyNTPfdAyZuSqHEeNQkJXEKn0fKHrnZSH9DmdBpjnL0lV-svur0cC4b_UCke_-70x/exec"; // 階段一 Step 1-4 取得的網址
+    // ============================
+
+    let userProfile = {};
+    let currentData = null;
+
+    async function init() {
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+        userProfile = await liff.getProfile();
+        document.getElementById("user-display").innerText = `志工：${userProfile.displayName}`;
+        fetchLocation();
+      } catch (err) {
+        showError("LINE 連線失敗，請重新開啟。");
+      }
+    }
+
+    function fetchLocation() {
+      if (!navigator.geolocation) {
+        showError("手機不支援 GPS 定位");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        queryStatus,
+        (error) => {
+          showError("請允許手機「定位權限」，才能自動辨識長輩住處。");
+        },
+        { enableHighAccuracy: true, timeout: 12000 }
+      );
+    }
+
+    async function queryStatus(position) {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+
+      try {
+        const response = await fetch(GAS_URL, {
+          method: "POST",
+          body: JSON.stringify({
+            action: "checkStatus",
+            userId: userProfile.userId,
+            lat: lat,
+            lng: lng
+          })
+        });
+        currentData = await response.json();
+        currentData.lat = lat;
+        currentData.lng = lng;
+        renderUI();
+      } catch (e) {
+        showError("網路訊號較弱，請重試。");
+      }
+    }
+
+    function renderUI() {
+      const btnBox = document.getElementById("btn-box");
+      const statusText = document.getElementById("status-text");
+      const warningBox = document.getElementById("warning-box");
+
+      if (currentData.status === "error") {
+        showError(currentData.message);
+        return;
+      }
+
+      if (currentData.matched) {
+        const isIn = currentData.punchType === "簽到";
+        statusText.innerText = `已到達【${currentData.caseName}】家附近`;
+        btnBox.innerHTML = `
+          <button class="big-btn ${isIn ? 'btn-in' : 'btn-out'}" onclick="submitPunch()">
+            <span>${isIn ? '📍 我已到達' : '🚪 準備離開'}</span>
+            <span style="font-size: 32px; margin: 4px 0;">【${currentData.caseName}】家</span>
+            <span class="btn-sub">👉 點此大按鈕完成【${currentData.punchType}】</span>
+          </button>
+        `;
+        warningBox.innerHTML = "";
+      } else {
+        statusText.innerText = `⚠️ 尚未到達長輩家範圍`;
+        btnBox.innerHTML = `
+          <button class="big-btn btn-wait" onclick="fetchLocation()">
+            <span>距離最近：【${currentData.caseName}】</span>
+            <span class="btn-sub">尚差約 ${currentData.distance} 公尺 (點此重新定位)</span>
+          </button>
+        `;
+        warningBox.innerHTML = `<div class="warning-box">請抵達長輩住家門口（${currentData.allowedRadius} 公尺內）再點擊。</div>`;
+      }
+    }
+
+    async function submitPunch() {
+      const btn = document.querySelector(".big-btn");
+      btn.disabled = true;
+      btn.style.opacity = "0.6";
+      document.getElementById("status-text").innerText = "⏳ 記錄上傳中，請稍候...";
+
+      try {
+        const response = await fetch(GAS_URL, {
+          method: "POST",
+          body: JSON.stringify({
+            action: "punch",
+            userId: userProfile.userId,
+            userName: userProfile.displayName,
+            caseName: currentData.caseName,
+            punchType: currentData.punchType,
+            distance: currentData.distance,
+            lat: currentData.lat,
+            lng: currentData.lng
+          })
+        });
+        const res = await response.json();
+        if (res.status === "success") {
+          document.getElementById("main-card").innerHTML = `
+            <div class="done-msg">
+              ✅ 打卡成功！<br>
+              <span style="font-size: 22px; color: #2D3748;">已完成【${currentData.caseName}】${currentData.punchType}</span>
+            </div>
+          `;
+          setTimeout(() => { liff.closeWindow(); }, 2500);
+        }
+      } catch (err) {
+        alert("打卡失敗，請檢查網路連線。");
+        btn.disabled = false;
+        btn.style.opacity = "1";
+      }
+    }
+
+    function showError(msg) {
+      document.getElementById("status-text").innerText = msg;
+      document.getElementById("btn-box").innerHTML = `
+        <button class="big-btn btn-retry" onclick="location.reload()">🔄 點此重新整理</button>
+      `;
+      document.getElementById("warning-box").innerHTML = "";
+    }
+
+    init();
+  </script>
+</body>
+</html>
