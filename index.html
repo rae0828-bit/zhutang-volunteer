@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>竹塘志工訪視打卡</title>
+  <title>志工居家訪視打卡</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     * { box-sizing: border-box; }
@@ -140,7 +140,11 @@
 
   <script>
     const LIFF_ID = "2011244356-oKiBsEgd";
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbwuyNTPfdAyZuSqHEeNQkJXEKn0fKHrnZSH9DmdBpjnL0lV-svur0cC4b_UCke_-70x/exec";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzdZGcYwOWtGgeum6Bzstyo_ag-8JHKmSPJOGFVooMjOb6zN579rylZvBY8f8AiEhkosA/exec";
+
+    // 自動偵測網址上的社區參數 (?org=zhutang)，未帶參數預設為 zhutang
+    const urlParams = new URLSearchParams(window.location.search);
+    const CURRENT_ORG = urlParams.get('org') || "zhutang";
 
     let userProfile = {};
     let currentData = null;
@@ -193,6 +197,7 @@
           method: "POST",
           body: JSON.stringify({
             action: "checkStatus",
+            org: CURRENT_ORG,
             userId: userProfile.userId,
             lat: lat,
             lng: lng
@@ -314,6 +319,7 @@
         method: "POST",
         body: JSON.stringify({
           action: "punch",
+          org: CURRENT_ORG,
           userId: userProfile.userId,
           userName: userProfile.displayName,
           caseName: targetCaseName,
