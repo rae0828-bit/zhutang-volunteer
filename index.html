@@ -208,7 +208,7 @@
         currentData.lng = lng;
         renderUI();
       } catch (e) {
-        showError("網路訊號較弱，請重試。");
+        showError("連線失敗：" + (e.message || e));
       }
     }
 
